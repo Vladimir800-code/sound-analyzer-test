@@ -45,7 +45,8 @@
     <style>
         body { font-family: Arial, sans-serif; text-align: center; }
         canvas { border: 1px solid black; margin-top: 20px; }
-        #status { color: black; font-weight: bold; animation: blink 1s infinite; }
+        #status { color: black; font-weight: bold; }
+        #status.recording { animation: blink 1s infinite; }
         @keyframes blink { 50% { opacity: 0; } }
         #graph-title { font-weight: bold; color: black; font-size: 18px; margin-top: 10px; display: none; }
     </style>
@@ -87,6 +88,7 @@
                 source.connect(scriptProcessor);
                 scriptProcessor.connect(audioContext.destination);
                 startBtn.disabled = true;
+                status.classList.add('recording');
                 status.textContent = 'Запись';
 
                 setTimeout(() => {
@@ -95,10 +97,12 @@
                     stream.getTracks().forEach(track => track.stop());
                     audioContext.close();
                     status.textContent = 'Обработка данных...';
+                    status.classList.remove('recording');
                     processAudio();
                 }, DURATION * 1000);
             } catch (err) {
                 status.textContent = `Ошибка: ${err.message}. Убедитесь, что микрофон разрешен и используется HTTPS или localhost.`;
+                status.classList.remove('recording');
                 console.error('Error:', err);
                 startBtn.disabled = false;
             }
@@ -132,7 +136,7 @@
 
             const timeStep = DURATION / rms.length;
             drawGraph(normalizedIntegral, timeStep);
-            status.textContent = 'График построен!';
+            status.textContent = 'Обработка данных...';
             graphTitle.style.display = 'block';
             startBtn.disabled = false;
         }
@@ -160,7 +164,7 @@
             ctx.lineWidth = 2;
             data.forEach((value, index) => {
                 const x = (canvas.width / data.length) * index;
-                const y = canvas.height - value * canvas.height * 0.9;
+                const y = canvas.height - value * canvas.height;
                 if (index === 0) ctx.moveTo(x, y);
                 else ctx.lineTo(x, y);
             });
