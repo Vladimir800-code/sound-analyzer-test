@@ -45,19 +45,23 @@
     <style>
         body { font-family: Arial, sans-serif; text-align: center; }
         canvas { border: 1px solid black; margin-top: 20px; }
-        #status { color: red; }
+        #status { color: black; font-weight: bold; animation: blink 1s infinite; }
+        @keyframes blink { 50% { opacity: 0; } }
+        #graph-title { font-weight: bold; color: black; font-size: 18px; margin-top: 10px; display: none; }
     </style>
 </head>
 <body>
     <h1>Анализ интенсивности звука</h1>
     <p>Нажмите кнопку для записи 30 секунд звука.</p>
     <button id="startBtn">Записать</button>
-    <p id="status">Для запуска двойным кликом: откройте chrome://flags, найдите #unsafely-treat-insecure-origin-as-secure, добавьте путь к файлу (например, file:///C:/path/to/index.html), перезапустите Chrome.</p>
+    <p id="status"></p>
+    <p id="graph-title">График интенсивности</p>
     <canvas id="graph" width="800" height="400"></canvas>
 
     <script>
         const startBtn = document.getElementById('startBtn');
         const status = document.getElementById('status');
+        const graphTitle = document.getElementById('graph-title');
         const canvas = document.getElementById('graph');
         const ctx = canvas.getContext('2d');
         const DURATION = 30;
@@ -83,7 +87,7 @@
                 source.connect(scriptProcessor);
                 scriptProcessor.connect(audioContext.destination);
                 startBtn.disabled = true;
-                status.textContent = 'Запись звука...';
+                status.textContent = 'Запись';
 
                 setTimeout(() => {
                     scriptProcessor.disconnect();
@@ -94,7 +98,7 @@
                     processAudio();
                 }, DURATION * 1000);
             } catch (err) {
-                status.textContent = `Ошибка: ${err.message}. Убедитесь, что микрофон разрешен и Chrome-флаг настроен для file://.`;
+                status.textContent = `Ошибка: ${err.message}. Убедитесь, что микрофон разрешен и используется HTTPS или localhost.`;
                 console.error('Error:', err);
                 startBtn.disabled = false;
             }
@@ -117,7 +121,6 @@
                 rms.push(Math.sqrt(sum / chunk.length));
             }
 
-            // Интегральная кривая, нормированная по единице
             const integral = [];
             let cumulativeSum = 0;
             for (let i = 0; i < rms.length; i++) {
@@ -130,25 +133,21 @@
             const timeStep = DURATION / rms.length;
             drawGraph(normalizedIntegral, timeStep);
             status.textContent = 'График построен!';
+            graphTitle.style.display = 'block';
             startBtn.disabled = false;
         }
 
         function drawGraph(data, timeStep) {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Сетка
             ctx.beginPath();
             ctx.strokeStyle = '#ddd';
             ctx.lineWidth = 0.5;
-
-            // Вертикальная сетка (шаг 0.1)
             for (let i = 0; i <= 1; i += 0.1) {
                 const y = canvas.height - i * canvas.height;
                 ctx.moveTo(0, y);
                 ctx.lineTo(canvas.width, y);
             }
-
-            // Горизонтальная сетка (шаг 1 секунда)
             for (let i = 0; i <= DURATION; i += 1) {
                 const x = (i / DURATION) * canvas.width;
                 ctx.moveTo(x, 0);
@@ -156,7 +155,6 @@
             }
             ctx.stroke();
 
-            // Кривая
             ctx.beginPath();
             ctx.strokeStyle = 'blue';
             ctx.lineWidth = 2;
@@ -168,7 +166,6 @@
             });
             ctx.stroke();
 
-            // Оси
             ctx.beginPath();
             ctx.strokeStyle = 'black';
             ctx.lineWidth = 1;
@@ -178,23 +175,17 @@
             ctx.lineTo(0, canvas.height);
             ctx.stroke();
 
-            // Метки шкалы
             ctx.font = '12px Arial';
             ctx.fillStyle = 'black';
-
-            // Горизонтальная ось (время, шаг 1 сек)
             for (let i = 0; i <= DURATION; i += 1) {
                 const x = (i / DURATION) * canvas.width;
                 ctx.fillText(i, x - 5, canvas.height - 5);
             }
-
-            // Вертикальная ось (нормированная интенсивность, шаг 0.1)
             for (let i = 0; i <= 1; i += 0.1) {
                 const y = canvas.height - i * canvas.height;
                 ctx.fillText(i.toFixed(1), 5, y + 5);
             }
 
-            // Подписи осей
             ctx.fillText('Время (с)', canvas.width / 2, canvas.height - 20);
             ctx.save();
             ctx.rotate(-Math.PI / 2);
