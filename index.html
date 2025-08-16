@@ -129,9 +129,21 @@
                 integral.push(cumulativeSum);
             }
             const maxIntegral = Math.max(...integral, 0.001);
-            const normalizedIntegral = integral.map(val => val / maxIntegral);
+            let normalizedIntegral = integral.map(val => val / maxIntegral);
 
+            // ограничение по наклону
             const timeStep = DURATION / rms.length;
+            for (let i = 1; i < normalizedIntegral.length; i++) {
+                const slope = (normalizedIntegral[i] - normalizedIntegral[i-1]) / timeStep;
+                if (slope > 0.15) {
+                    normalizedIntegral[i] = normalizedIntegral[i-1];
+                }
+            }
+
+            // пересчёт нормировки
+            const maxNorm = Math.max(...normalizedIntegral, 0.001);
+            normalizedIntegral = normalizedIntegral.map(v => v / maxNorm);
+
             drawGraph(normalizedIntegral, timeStep);
             status.textContent = '✅ Обработка завершена';
             graphTitle.style.display = 'block';
