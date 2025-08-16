@@ -1,67 +1,63 @@
-<!DOCTYPE html>
-<html lang="ru">
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Анализ интенсивности звука</title>
+    <title>Sound Intensity Analyzer</title>
     <style>
-        body { 
-            font-family: 'Segoe UI', Roboto, Arial, sans-serif; 
-            text-align: center; 
-            background: #f9fafb;
-            margin: 0; padding: 0;
-        }
-        header {
-            background: linear-gradient(135deg, #dbeafe, #eff6ff);
-            padding: 20px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-        }
-        h1 { margin: 0; color: #1e3a8a; }
-        .sub { margin: 4px 0 0; color:#374151; font-size: 14px; }
-        button {
-            padding: 10px 20px;
-            margin: 10px;
-            font-size: 15px;
-            border: none;
-            border-radius: 10px;
-            background: #2563eb;
-            color: white;
-            cursor: pointer;
-            transition: background 0.3s, transform 0.1s;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-        }
-        button:hover { background: #1e40af; }
-        button:active { transform: scale(0.97); }
-        button:disabled { background: #94a3b8; cursor: not-allowed; }
-        #status { font-weight: bold; margin: 10px; }
-        #status.recording { animation: blink 1s infinite; color: red; }
+        body { font-family: Arial, sans-serif; text-align: center; }
+        canvas { border: 1px solid black; margin-top: 20px; }
+        #status { color: black; font-weight: bold; }
+        #status.recording { animation: blink 1s infinite; }
         @keyframes blink { 50% { opacity: 0; } }
-        #graph-title { font-weight: bold; color: #111827; font-size: 18px; margin: 10px 0 0; display: none; }
-        canvas { 
-            border: 1px solid #cbd5e1; 
-            margin-top: 16px; 
-            background: white; 
-            border-radius: 8px; 
-            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-        }
-        .legend { margin: 8px auto; color:#111827; }
-        .legend span { display:inline-flex; align-items:center; margin:0 10px; }
-        .legend i { width:24px; height:3px; display:inline-block; margin-right:6px; }
-        .blue { background:#2563eb; }
-        .red { background:red; }
+        #graph-title { font-weight: bold; color: black; font-size: 18px; margin-top: 10px; display: none; }
     </style>
 </head>
 <body>
-    <header>
-        <h1>Анализ интенсивности звука</h1>
-        <div class="sub">Запись 15 секунд • Ограничение наклона 0.15 ед/сек • Оценка по окну 0.2 с</div>
-        <button id="startBtn">🎙 Записать</button>
-        <p id="status"></p>
-    </header>
-    <main>
-        <p id="graph-title">Нормированная интегральная интенсивность</p>
-        <div class="legend"><span><i class="blue"></i>обычные участки</span><span><i class="red"></i>срезанные (наклон &gt; 0.15)</span></div>
-        <canvas id="graph" width="900" height="420"></canvas>
-    </main>
+    <h1>Анализ интенсивности звука</h1>
+    <p>Нажмите кнопку для записи 30 секунд звука.</p>
+    <button id="startBtn">Записать</button>
+    <p id="status"></p>
+    <p id="graph-title">График интенсивности</p>
+    <canvas id="graph" width="800" height="400"></canvas>
 
     <script>
         const startBtn = document.getElementById('startBtn');
@@ -69,13 +65,9 @@
         const graphTitle = document.getElementById('graph-title');
         const canvas = document.getElementById('graph');
         const ctx = canvas.getContext('2d');
-
-        const DURATION = 15;             // длительность записи, с
+        const DURATION = 30;
         const SAMPLE_RATE = 44100;
         const CHUNK_SIZE = 1024;
-        const SLOPE_LIMIT = 0.15;        // ед/сек
-        const WINDOW_SEC = 0.2;          // окно для оценки производной, с
-
         let audioContext;
         let scriptProcessor;
         let audioData = [];
@@ -88,10 +80,8 @@
                 const source = audioContext.createMediaStreamSource(stream);
                 scriptProcessor = audioContext.createScriptProcessor(CHUNK_SIZE, 1, 1);
 
-                audioData = [];
                 scriptProcessor.onaudioprocess = (event) => {
-                    const input = event.inputBuffer.getChannelData(0);
-                    // Копируем, чтобы не зависеть от повторного использования буфера
+                    const input = event.inputBuffer.getChannelData(0).slice();
                     audioData.push(...input);
                 };
 
@@ -99,7 +89,7 @@
                 scriptProcessor.connect(audioContext.destination);
                 startBtn.disabled = true;
                 status.classList.add('recording');
-                status.textContent = '🎤 Запись...';
+                status.textContent = 'Запись';
 
                 setTimeout(() => {
                     scriptProcessor.disconnect();
@@ -125,132 +115,85 @@
                 return;
             }
 
-            // 1) RMS по кускам
             const rms = [];
             for (let i = 0; i < audioData.length; i += CHUNK_SIZE) {
                 let sum = 0;
                 const chunk = audioData.slice(i, i + CHUNK_SIZE);
-                for (let j = 0; j < chunk.length; j++) sum += chunk[j] * chunk[j];
+                for (let j = 0; j < chunk.length; j++) {
+                    sum += chunk[j] ** 2;
+                }
                 rms.push(Math.sqrt(sum / chunk.length));
             }
 
-            // 2) Интеграл и нормировка (база) к 1.0, без ограничений
             const integral = [];
-            let acc = 0;
-            for (let i = 0; i < rms.length; i++) { acc += rms[i]; integral.push(acc); }
-            const baseEnd = Math.max(integral[integral.length - 1], 1e-9);
-            let norm = integral.map(v => v / baseEnd);
-
-            // 3) Ограничение наклона по скользящему окну + итеративная нормировка
-            const dt = DURATION / rms.length;
-            const w = Math.max(1, Math.round(WINDOW_SEC / dt));
-
-            function applyLimiter(arr) {
-                const out = new Array(arr.length);
-                const mask = new Array(arr.length).fill(false);
-                out[0] = arr[0];
-                for (let i = 1; i < arr.length; i++) {
-                    // производная по окну: сравниваем текущее с значением w шагов назад
-                    if (i >= w) {
-                        const slope = (arr[i] - out[i - w]) / (w * dt);
-                        if (slope > SLOPE_LIMIT) { out[i] = out[i - 1]; mask[i] = true; }
-                        else { out[i] = arr[i]; }
-                    } else {
-                        const slope = (arr[i] - out[i - 1]) / dt;
-                        if (slope > SLOPE_LIMIT) { out[i] = out[i - 1]; mask[i] = true; }
-                        else { out[i] = arr[i]; }
-                    }
-                }
-                return { out, mask };
+            let cumulativeSum = 0;
+            for (let i = 0; i < rms.length; i++) {
+                cumulativeSum += rms[i];
+                integral.push(cumulativeSum);
             }
+            const maxIntegral = Math.max(...integral, 0.001);
+            const normalizedIntegral = integral.map(val => val / maxIntegral);
 
-            // Первая итерация — фиксация исходных "слишком крутых" участков
-            let { out: constrained, mask } = applyLimiter(norm);
-
-            // Две дополнительные итерации: нормировка -> проверка -> нормировка
-            for (let pass = 0; pass < 2; pass++) {
-                const endVal = Math.max(constrained[constrained.length - 1], 1e-9);
-                constrained = constrained.map(v => v / endVal); // привести к 1.0
-                const res = applyLimiter(constrained);
-                constrained = res.out;
-                // копим маску (любой срез останется красным)
-                for (let i = 0; i < mask.length; i++) if (res.mask[i]) mask[i] = true;
-            }
-            // финальная нормировка к 1.0
-            const finalEnd = Math.max(constrained[constrained.length - 1], 1e-9);
-            constrained = constrained.map(v => v / finalEnd);
-
-            drawGraph(constrained, dt, mask);
-            status.textContent = '✅ Обработка завершена';
+            const timeStep = DURATION / rms.length;
+            drawGraph(normalizedIntegral, timeStep);
+            status.textContent = 'Обработка данных...';
             graphTitle.style.display = 'block';
             startBtn.disabled = false;
         }
 
-        function drawGraph(data, dt, flatMask) {
+        function drawGraph(data, timeStep) {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // сетка
             ctx.beginPath();
-            ctx.strokeStyle = '#e5e7eb';
+            ctx.strokeStyle = '#ddd';
+            ctx.lineWidth = 0.5;
+            for (let i = 0; i <= 1; i += 0.1) {
+                const y = canvas.height - i * canvas.height;
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+            }
+            for (let i = 0; i <= DURATION; i += 1) {
+                const x = (i / DURATION) * canvas.width;
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+            }
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.strokeStyle = 'blue';
+            ctx.lineWidth = 2;
+            data.forEach((value, index) => {
+                const x = (canvas.width / data.length) * index;
+                const y = canvas.height - value * canvas.height;
+                if (index === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.strokeStyle = 'black';
             ctx.lineWidth = 1;
-            const maxY = 1.0, minY = 0.0;
-            for (let yv = minY; yv <= maxY + 1e-9; yv += 0.1) {
-                const y = canvas.height - (yv - minY) / (maxY - minY) * canvas.height;
-                ctx.moveTo(0, y); ctx.lineTo(canvas.width, y);
-            }
-            for (let t = 0; t <= DURATION; t++) {
-                const x = (t / DURATION) * canvas.width;
-                ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height);
-            }
+            ctx.moveTo(0, canvas.height);
+            ctx.lineTo(canvas.width, canvas.height);
+            ctx.moveTo(0, 0);
+            ctx.lineTo(0, canvas.height);
             ctx.stroke();
 
-            // основная кривая (синяя)
-            ctx.beginPath();
-            ctx.strokeStyle = '#2563eb';
-            ctx.lineWidth = 2;
-            for (let i = 0; i < data.length; i++) {
-                const x = (i / (data.length - 1)) * canvas.width;
-                const y = canvas.height - data[i] * canvas.height;
-                if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            ctx.font = '12px Arial';
+            ctx.fillStyle = 'black';
+            for (let i = 0; i <= DURATION; i += 1) {
+                const x = (i / DURATION) * canvas.width;
+                ctx.fillText(i, x - 5, canvas.height - 5);
             }
-            ctx.stroke();
+            for (let i = 0; i <= 1; i += 0.1) {
+                const y = canvas.height - i * canvas.height;
+                ctx.fillText(i.toFixed(1), 5, y + 5);
+            }
 
-            // красные сегменты (срезанные шаги i-1 -> i)
-            ctx.beginPath();
-            ctx.strokeStyle = 'red';
-            ctx.lineWidth = 2;
-            for (let i = 1; i < data.length; i++) {
-                if (!flatMask[i]) continue;
-                const x1 = ((i - 1) / (data.length - 1)) * canvas.width;
-                const y1 = canvas.height - data[i - 1] * canvas.height;
-                const x2 = (i / (data.length - 1)) * canvas.width;
-                const y2 = canvas.height - data[i] * canvas.height;
-                ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
-            }
-            ctx.stroke();
-
-            // оси
-            ctx.beginPath();
-            ctx.strokeStyle = '#0f172a';
-            ctx.lineWidth = 1.2;
-            ctx.moveTo(0, canvas.height); ctx.lineTo(canvas.width, canvas.height);
-            ctx.moveTo(0, 0); ctx.lineTo(0, canvas.height);
-            ctx.stroke();
-
-            // подписи
-            ctx.font = '12px Segoe UI';
-            ctx.fillStyle = '#111827';
-            for (let t = 0; t <= DURATION; t++) {
-                const x = (t / DURATION) * canvas.width;
-                ctx.fillText(t.toString(), x + 2, canvas.height - 6);
-            }
-            for (let yv = minY; yv <= maxY + 1e-9; yv += 0.1) {
-                const y = canvas.height - (yv - minY) / (maxY - minY) * canvas.height;
-                ctx.fillText(yv.toFixed(1), 4, y - 2);
-            }
-            ctx.fillText('Время (с)', canvas.width / 2 - 28, canvas.height - 10);
-            ctx.save(); ctx.rotate(-Math.PI / 2);
-            ctx.fillText('Нормированная интегральная интенсивность', -canvas.height / 2 - 80, 14);
+            ctx.fillText('Время (с)', canvas.width / 2, canvas.height - 20);
+            ctx.save();
+            ctx.rotate(-Math.PI / 2);
+            ctx.fillText('Нормированная интегральная интенсивность', -canvas.height / 2, 15);
             ctx.restore();
         }
     </script>
