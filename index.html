@@ -38,163 +38,171 @@
         return gk_fileData[filename] || "";
         }
         </script><!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Sound Intensity Analyzer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Анализ интенсивности звука с коррекцией фона</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
     <style>
-        body { font-family: Arial, sans-serif; text-align: center; }
-        canvas { border: 1px solid black; margin-top: 20px; }
-        #status { color: black; font-weight: bold; }
-        #status.recording { animation: blink 1s infinite; }
-        @keyframes blink { 50% { opacity: 0; } }
-        #graph-title { font-weight: bold; color: black; font-size: 18px; margin-top: 10px; display: none; }
+        body { 
+            background-color: #808080;
+            font-family: Arial, sans-serif; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            color: white; 
+        }
+        button { 
+            padding: 10px 20px; 
+            font-size: 16px; 
+            cursor: pointer; 
+            margin: 10px; 
+        }
+        canvas { 
+            border: 1px solid white; 
+        }
+        .error { 
+            color: red; 
+            font-weight: bold; 
+        }
     </style>
 </head>
 <body>
-    <h1>Анализ интенсивности звука</h1>
-    <p>Нажмите кнопку для записи 30 секунд звука.</p>
-    <button id="startBtn">Записать</button>
-    <p id="status"></p>
-    <p id="graph-title">График интенсивности</p>
-    <canvas id="graph" width="800" height="400"></canvas>
+    <h1>Анализ интенсивности звука с коррекцией фона</h1>
+    <div>
+        <p><strong>Как использовать:</strong> Нажмите кнопку "Начать запись", разрешите доступ к микрофону. 
+        После 15 секунд записи вы увидите график, где:</p>
+        <ul>
+            <li><span style="color: #FF0000;">Красная линия</span> - очищенный сигнал</li>
+            <li><span style="color: #00FF00;">Зелёная линия</span> - фоновый шум</li>
+            <li><span style="color: #0000FF;">Синяя линия</span> - интегральная кривая</li>
+        </ul>
+    </div>
+    <button id="recordButton">Начать запись (15 сек)</button>
+    <p id="status">Готов к записи</p>
+    <p id="error" class="error"></p>
+    <h2>График интенсивности звука</h2>
+    <div id="canvasContainer"></div>
 
     <script>
-        const startBtn = document.getElementById('startBtn');
-        const status = document.getElementById('status');
-        const graphTitle = document.getElementById('graph-title');
-        const canvas = document.getElementById('graph');
-        const ctx = canvas.getContext('2d');
-        const DURATION = 30;
-        const SAMPLE_RATE = 44100;
-        const CHUNK_SIZE = 1024;
-        let audioContext;
-        let scriptProcessor;
-        let audioData = [];
+        let mic, recorder, soundFile;
+        let state = 0;
+        let amplitudeData = [];
+        let backgroundNoise = [];
+        let cleanSignal = [];
+        let integralSignal = [];
+        let recordButton, statusText, errorText;
 
-        startBtn.addEventListener('click', async () => {
-            try {
-                status.textContent = 'Запрос доступа к микрофону...';
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: { sampleRate: SAMPLE_RATE } });
-                audioContext = new AudioContext({ sampleRate: SAMPLE_RATE });
-                const source = audioContext.createMediaStreamSource(stream);
-                scriptProcessor = audioContext.createScriptProcessor(CHUNK_SIZE, 1, 1);
-
-                scriptProcessor.onaudioprocess = (event) => {
-                    const input = event.inputBuffer.getChannelData(0).slice();
-                    audioData.push(...input);
-                };
-
-                source.connect(scriptProcessor);
-                scriptProcessor.connect(audioContext.destination);
-                startBtn.disabled = true;
-                status.classList.add('recording');
-                status.textContent = 'Запись';
-
-                setTimeout(() => {
-                    scriptProcessor.disconnect();
-                    source.disconnect();
-                    stream.getTracks().forEach(track => track.stop());
-                    audioContext.close();
-                    status.textContent = 'Обработка данных...';
-                    status.classList.remove('recording');
-                    processAudio();
-                }, DURATION * 1000);
-            } catch (err) {
-                status.textContent = `Ошибка: ${err.message}. Убедитесь, что микрофон разрешен и используется HTTPS или localhost.`;
-                status.classList.remove('recording');
-                console.error('Error:', err);
-                startBtn.disabled = false;
-            }
-        });
-
-        function processAudio() {
-            if (audioData.length === 0) {
-                status.textContent = 'Ошибка: данные звука не записаны';
-                startBtn.disabled = false;
+        // Проверка загрузки p5.js и p5.sound.js
+        window.onload = function() {
+            if (typeof p5 === 'undefined' || typeof p5.SoundRecorder === 'undefined') {
+                document.getElementById('error').innerHTML = 'Ошибка: Не удалось загрузить библиотеки p5.js или p5.sound.js';
                 return;
             }
+            // Инициализация элементов DOM
+            recordButton = document.getElementById('recordButton');
+            statusText = document.getElementById('status');
+            errorText = document.getElementById('error');
+            setup();
+        };
 
-            const rms = [];
-            for (let i = 0; i < audioData.length; i += CHUNK_SIZE) {
-                let sum = 0;
-                const chunk = audioData.slice(i, i + CHUNK_SIZE);
-                for (let j = 0; j < chunk.length; j++) {
-                    sum += chunk[j] ** 2;
-                }
-                rms.push(Math.sqrt(sum / chunk.length));
+        function setup() {
+            try {
+                let canvas = createCanvas(800, 400);
+                canvas.parent('canvasContainer');
+                background(0);
+                mic = new p5.AudioIn();
+                recorder = new p5.SoundRecorder();
+                recorder.setInput(mic);
+                soundFile = new p5.SoundFile();
+                recordButton.addEventListener('click', toggleRecording);
+            } catch (e) {
+                errorText.innerHTML = 'Ошибка инициализации: ' + e.message;
             }
-
-            const integral = [];
-            let cumulativeSum = 0;
-            for (let i = 0; i < rms.length; i++) {
-                cumulativeSum += rms[i];
-                integral.push(cumulativeSum);
-            }
-            const maxIntegral = Math.max(...integral, 0.001);
-            const normalizedIntegral = integral.map(val => val / maxIntegral);
-
-            const timeStep = DURATION / rms.length;
-            drawGraph(normalizedIntegral, timeStep);
-            status.textContent = 'Обработка данных...';
-            graphTitle.style.display = 'block';
-            startBtn.disabled = false;
         }
 
-        function drawGraph(data, timeStep) {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            ctx.beginPath();
-            ctx.strokeStyle = '#ddd';
-            ctx.lineWidth = 0.5;
-            for (let i = 0; i <= 1; i += 0.1) {
-                const y = canvas.height - i * canvas.height;
-                ctx.moveTo(0, y);
-                ctx.lineTo(canvas.width, y);
+        function toggleRecording() {
+            try {
+                if (state === 0) {
+                    mic.start(() => {
+                        recorder.record(soundFile);
+                        state = 1;
+                        statusText.innerHTML = 'Идёт запись...';
+                        setTimeout(stopRecording, 15000);
+                    }, (err) => {
+                        errorText.innerHTML = 'Ошибка доступа к микрофону: ' + err.message;
+                    });
+                }
+            } catch (e) {
+                errorText.innerHTML = 'Ошибка при записи: ' + e.message;
             }
-            for (let i = 0; i <= DURATION; i += 1) {
-                const x = (i / DURATION) * canvas.width;
-                ctx.moveTo(x, 0);
-                ctx.lineTo(x, canvas.height);
+        }
+
+        function stopRecording() {
+            try {
+                if (state === 1) {
+                    mic.stop();
+                    recorder.stop();
+                    state = 2;
+                    statusText.innerHTML = 'Запись завершена, обработка данных...';
+                    processAudio();
+                }
+            } catch (e) {
+                errorText.innerHTML = 'Ошибка при остановке записи: ' + e.message;
             }
-            ctx.stroke();
+        }
 
-            ctx.beginPath();
-            ctx.strokeStyle = 'blue';
-            ctx.lineWidth = 2;
-            data.forEach((value, index) => {
-                const x = (canvas.width / data.length) * index;
-                const y = canvas.height - value * canvas.height;
-                if (index === 0) ctx.moveTo(x, y);
-                else ctx.lineTo(x, y);
-            });
-            ctx.stroke();
-
-            ctx.beginPath();
-            ctx.strokeStyle = 'black';
-            ctx.lineWidth = 1;
-            ctx.moveTo(0, canvas.height);
-            ctx.lineTo(canvas.width, canvas.height);
-            ctx.moveTo(0, 0);
-            ctx.lineTo(0, canvas.height);
-            ctx.stroke();
-
-            ctx.font = '12px Arial';
-            ctx.fillStyle = 'black';
-            for (let i = 0; i <= DURATION; i += 1) {
-                const x = (i / DURATION) * canvas.width;
-                ctx.fillText(i, x - 5, canvas.height - 5);
+        function processAudio() {
+            try {
+                let samples = soundFile.getPeaks(800);
+                amplitudeData = samples.map(Math.abs);
+                backgroundNoise = new Array(800).fill(0.05);
+                cleanSignal = amplitudeData.map((val, i) => Math.max(0, val - backgroundNoise[i]));
+                integralSignal = new Array(800).fill(0);
+                let sum = 0;
+                for (let i = 0; i < cleanSignal.length; i++) {
+                    sum += cleanSignal[i];
+                    integralSignal[i] = sum;
+                }
+                statusText.innerHTML = 'График готов';
+                state = 3;
+            } catch (e) {
+                errorText.innerHTML = 'Ошибка обработки аудио: ' + e.message;
             }
-            for (let i = 0; i <= 1; i += 0.1) {
-                const y = canvas.height - i * canvas.height;
-                ctx.fillText(i.toFixed(1), 5, y + 5);
-            }
+        }
 
-            ctx.fillText('Время (с)', canvas.width / 2, canvas.height - 20);
-            ctx.save();
-            ctx.rotate(-Math.PI / 2);
-            ctx.fillText('Нормированная интегральная интенсивность', -canvas.height / 2, 15);
-            ctx.restore();
+        function draw() {
+            if (state === 3) {
+                background(0);
+                noFill();
+                strokeWeight(2);
+
+                // Красная линия - очищенный сигнал
+                stroke(255, 0, 0);
+                beginShape();
+                for (let i = 0; i < cleanSignal.length; i++) {
+                    vertex(i, height - cleanSignal[i] * height * 0.5);
+                }
+                endShape();
+
+                // Зелёная линия - фоновый шум
+                stroke(0, 255, 0);
+                beginShape();
+                for (let i = 0; i < backgroundNoise.length; i++) {
+                    vertex(i, height - backgroundNoise[i] * height * 0.5);
+                }
+                endShape();
+
+                // Синяя линия - интегральная кривая
+                stroke(0, 0, 255);
+                beginShape();
+                for (let i = 0; i < integralSignal.length; i++) {
+                    vertex(i, height - (integralSignal[i] / Math.max(...integralSignal)) * height * 0.5);
+                }
+                endShape();
+            }
         }
     </script>
 </body>
