@@ -131,20 +131,23 @@
             const maxIntegral = Math.max(...integral, 0.001);
             let normalizedIntegral = integral.map(val => val / maxIntegral);
 
-            // ограничение по наклону
+            // ограничение по наклону (горизонтальные участки сохраняют длительность)
             const timeStep = DURATION / rms.length;
+            let constrained = [normalizedIntegral[0]];
             for (let i = 1; i < normalizedIntegral.length; i++) {
-                const slope = (normalizedIntegral[i] - normalizedIntegral[i-1]) / timeStep;
+                const slope = (normalizedIntegral[i] - constrained[i-1]) / timeStep;
                 if (slope > 0.15) {
-                    normalizedIntegral[i] = normalizedIntegral[i-1];
+                    constrained.push(constrained[i-1]); // горизонтальный участок
+                } else {
+                    constrained.push(normalizedIntegral[i]);
                 }
             }
 
             // пересчёт нормировки
-            const maxNorm = Math.max(...normalizedIntegral, 0.001);
-            normalizedIntegral = normalizedIntegral.map(v => v / maxNorm);
+            const maxVal = Math.max(...constrained, 0.001);
+            constrained = constrained.map(v => v / maxVal);
 
-            drawGraph(normalizedIntegral, timeStep);
+            drawGraph(constrained, timeStep);
             status.textContent = '✅ Обработка завершена';
             graphTitle.style.display = 'block';
             startBtn.disabled = false;
