@@ -1,63 +1,60 @@
-<script type="text/javascript">
-        var gk_isXlsx = false;
-        var gk_xlsxFileLookup = {};
-        var gk_fileData = {};
-        function filledCell(cell) {
-          return cell !== '' && cell != null;
-        }
-        function loadFileData(filename) {
-        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
-            try {
-                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
-                var firstSheetName = workbook.SheetNames[0];
-                var worksheet = workbook.Sheets[firstSheetName];
-
-                // Convert sheet to JSON to filter blank rows
-                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
-                // Filter out blank rows (rows where all cells are empty, null, or undefined)
-                var filteredData = jsonData.filter(row => row.some(filledCell));
-
-                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
-                var headerRowIndex = filteredData.findIndex((row, index) =>
-                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
-                );
-                // Fallback
-                if (headerRowIndex === -1 || headerRowIndex > 25) {
-                  headerRowIndex = 0;
-                }
-
-                // Convert filtered JSON back to CSV
-                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
-                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
-                return csv;
-            } catch (e) {
-                console.error(e);
-                return "";
-            }
-        }
-        return gk_fileData[filename] || "";
-        }
-        </script><!DOCTYPE html>
-<html lang="en">
+<!DOCTYPE html>
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Sound Intensity Analyzer</title>
+    <title>Анализ интенсивности звука</title>
     <style>
-        body { font-family: Arial, sans-serif; text-align: center; }
-        canvas { border: 1px solid black; margin-top: 20px; }
-        #status { color: black; font-weight: bold; }
-        #status.recording { animation: blink 1s infinite; }
+        body { 
+            font-family: 'Segoe UI', Roboto, Arial, sans-serif; 
+            text-align: center; 
+            background: #f9fafb;
+            margin: 0; padding: 0;
+        }
+        header {
+            background: linear-gradient(135deg, #dbeafe, #eff6ff);
+            padding: 20px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }
+        h1 { margin: 0; color: #1e3a8a; }
+        button {
+            padding: 10px 20px;
+            margin: 10px;
+            font-size: 15px;
+            border: none;
+            border-radius: 10px;
+            background: #2563eb;
+            color: white;
+            cursor: pointer;
+            transition: background 0.3s, transform 0.1s;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        button:hover { background: #1e40af; }
+        button:active { transform: scale(0.97); }
+        button:disabled { background: #94a3b8; cursor: not-allowed; }
+        #status { font-weight: bold; margin: 10px; }
+        #status.recording { animation: blink 1s infinite; color: red; }
         @keyframes blink { 50% { opacity: 0; } }
-        #graph-title { font-weight: bold; color: black; font-size: 18px; margin-top: 10px; display: none; }
+        #graph-title { font-weight: bold; color: #111827; font-size: 18px; margin-top: 10px; display: none; }
+        canvas { 
+            border: 1px solid #cbd5e1; 
+            margin-top: 20px; 
+            background: white; 
+            border-radius: 8px; 
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }
     </style>
 </head>
 <body>
-    <h1>Анализ интенсивности звука</h1>
-    <p>Нажмите кнопку для записи 30 секунд звука.</p>
-    <button id="startBtn">Записать</button>
-    <p id="status"></p>
-    <p id="graph-title">График интенсивности</p>
-    <canvas id="graph" width="800" height="400"></canvas>
+    <header>
+        <h1>Анализ интенсивности звука</h1>
+        <p>Нажмите кнопку для записи 15 секунд звука.</p>
+        <button id="startBtn">🎙 Записать</button>
+        <p id="status"></p>
+    </header>
+    <main>
+        <p id="graph-title">График интенсивности</p>
+        <canvas id="graph" width="800" height="400"></canvas>
+    </main>
 
     <script>
         const startBtn = document.getElementById('startBtn');
@@ -65,7 +62,7 @@
         const graphTitle = document.getElementById('graph-title');
         const canvas = document.getElementById('graph');
         const ctx = canvas.getContext('2d');
-        const DURATION = 30;
+        const DURATION = 15;
         const SAMPLE_RATE = 44100;
         const CHUNK_SIZE = 1024;
         let audioContext;
@@ -89,7 +86,7 @@
                 scriptProcessor.connect(audioContext.destination);
                 startBtn.disabled = true;
                 status.classList.add('recording');
-                status.textContent = 'Запись';
+                status.textContent = '🎤 Запись...';
 
                 setTimeout(() => {
                     scriptProcessor.disconnect();
@@ -136,7 +133,7 @@
 
             const timeStep = DURATION / rms.length;
             drawGraph(normalizedIntegral, timeStep);
-            status.textContent = 'Обработка данных...';
+            status.textContent = '✅ Обработка завершена';
             graphTitle.style.display = 'block';
             startBtn.disabled = false;
         }
@@ -144,8 +141,9 @@
         function drawGraph(data, timeStep) {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+            // сетка
             ctx.beginPath();
-            ctx.strokeStyle = '#ddd';
+            ctx.strokeStyle = '#e5e7eb';
             ctx.lineWidth = 0.5;
             for (let i = 0; i <= 1; i += 0.1) {
                 const y = canvas.height - i * canvas.height;
@@ -159,8 +157,9 @@
             }
             ctx.stroke();
 
+            // график
             ctx.beginPath();
-            ctx.strokeStyle = 'blue';
+            ctx.strokeStyle = '#2563eb';
             ctx.lineWidth = 2;
             data.forEach((value, index) => {
                 const x = (canvas.width / data.length) * index;
@@ -170,6 +169,7 @@
             });
             ctx.stroke();
 
+            // оси
             ctx.beginPath();
             ctx.strokeStyle = 'black';
             ctx.lineWidth = 1;
@@ -179,8 +179,9 @@
             ctx.lineTo(0, canvas.height);
             ctx.stroke();
 
-            ctx.font = '12px Arial';
-            ctx.fillStyle = 'black';
+            // подписи
+            ctx.font = '12px Segoe UI';
+            ctx.fillStyle = '#111827';
             for (let i = 0; i <= DURATION; i += 1) {
                 const x = (i / DURATION) * canvas.width;
                 ctx.fillText(i, x - 5, canvas.height - 5);
@@ -190,7 +191,7 @@
                 ctx.fillText(i.toFixed(1), 5, y + 5);
             }
 
-            ctx.fillText('Время (с)', canvas.width / 2, canvas.height - 20);
+            ctx.fillText('Время (с)', canvas.width / 2, canvas.height - 10);
             ctx.save();
             ctx.rotate(-Math.PI / 2);
             ctx.fillText('Нормированная интегральная интенсивность', -canvas.height / 2, 15);
